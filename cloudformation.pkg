@@ -1,0 +1,59 @@
+
+Resources:
+  CustomLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName:
+          Fn::Sub: ${AWS::StackName}CustomLambdaPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - '*'
+            Resource: '*'
+  CustomLambdaAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName:
+        Ref: CustomLambdaFunction
+      FunctionVersion: $LATEST
+      Name: CustomLambdaAlias
+  CustomLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: "const aws = require('aws-sdk')\nconst https = require(\"https\"\
+          )\nconst url = require(\"url\")\nconst report = function(status,event,context,data)\
+          \ {\n  const parsedUrl = url.parse(event.ResponseURL)\n  const result =\
+          \ JSON.stringify({ \n      Status: status, \n      RequestId: event.RequestId,\n\
+          \      StackId: event.StackId,\n      LogicalResourceId: event.LogicalResourceId,\n\
+          \      Data: data\n    }))\n  var request = https.request({\n      hostname:\
+          \ parsedUrl.hostname,\n      port: 443,\n      path: parsedUrl.path,\n \
+          \     method: \"PUT\",\n      headers: {\n          \"content-type\": \"\
+          \",\n          \"content-length\": result.length\n      }\n    }, function(response)\
+          \ {\n      if (event.ResourceProperties.Debug) console.log(JSON.stringify(response))\n\
+          \      context.done()\n    })\n  request.on('error', function(error) {\n\
+          \    console.log(JSON.stringify(error))\n    context.done()\n  })\n  request.write(result)\n\
+          \  request.end()\n}\nexports.handler = function(event,context) {\n  if (\
+          \ event.RequestType in event.ResourceProperties) {\n    try {\n      const\
+          \ res = eval( '(' + event.ResourceProperties[event.RequestType] + ')' )\n\
+          \      report('SUCCESS',event,context,res)\n    } catch (e) {\n      report('FAILED',event,context,e)\n\
+          \    }\n  }\n}\n"
+      Role:
+        Fn::GetAtt:
+        - CustomLambdaRole
+        - Arn
+      MemorySize: 512
+      Handler: index.handler
+      Runtime: nodejs6.10
+      Timeout: 30
